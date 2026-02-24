@@ -26,6 +26,10 @@ public class SimulationConfig {
     private final long poolScaleDownThresholdMs;
     private final long poolAcquireTimeoutMs;
 
+    // Modo iterativo
+    private final boolean iterative;
+    private final List<Integer> iterativeSteps;
+
     public SimulationConfig(String propertiesFile) {
         Properties props = new Properties();
         try (InputStream is = getClass().getClassLoader().getResourceAsStream(propertiesFile)) {
@@ -37,25 +41,33 @@ public class SimulationConfig {
             throw new RuntimeException("Error al cargar la configuración: " + e.getMessage(), e);
         }
 
-        this.dbUrl      = require(props, "db.url");
-        this.dbUser     = require(props, "db.user");
+        this.dbUrl = require(props, "db.url");
+        this.dbUser = require(props, "db.user");
         this.dbPassword = require(props, "db.password");
 
         String rawQueries = require(props, "simulation.queries");
         this.queries = Arrays.stream(rawQueries.split("\\|"))
-                             .map(String::trim)
-                             .filter(q -> !q.isEmpty())
-                             .toList();
+                .map(String::trim)
+                .filter(q -> !q.isEmpty())
+                .toList();
 
-        this.samples        = Integer.parseInt(require(props, "simulation.samples"));
-        this.maxRetries     = Integer.parseInt(require(props, "simulation.maxRetries"));
+        this.samples = Integer.parseInt(require(props, "simulation.samples"));
+        this.maxRetries = Integer.parseInt(require(props, "simulation.maxRetries"));
         this.timeoutSeconds = Integer.parseInt(require(props, "simulation.timeoutSeconds"));
 
-        this.poolMinSize             = Integer.parseInt(require(props, "pool.minSize"));
-        this.poolMaxSize             = Integer.parseInt(require(props, "pool.maxSize"));
-        this.poolScaleUpThresholdMs  = Long.parseLong(require(props, "pool.scaleUpThresholdMs"));
-        this.poolScaleDownThresholdMs= Long.parseLong(require(props, "pool.scaleDownThresholdMs"));
-        this.poolAcquireTimeoutMs    = Long.parseLong(require(props, "pool.acquireTimeoutMs"));
+        this.poolMinSize = Integer.parseInt(require(props, "pool.minSize"));
+        this.poolMaxSize = Integer.parseInt(require(props, "pool.maxSize"));
+        this.poolScaleUpThresholdMs = Long.parseLong(require(props, "pool.scaleUpThresholdMs"));
+        this.poolScaleDownThresholdMs = Long.parseLong(require(props, "pool.scaleDownThresholdMs"));
+        this.poolAcquireTimeoutMs = Long.parseLong(require(props, "pool.acquireTimeoutMs"));
+
+        this.iterative = Boolean.parseBoolean(props.getProperty("simulation.iterative", "false"));
+        String stepsRaw = props.getProperty("simulation.iterativeSteps", "50,100,200");
+        this.iterativeSteps = Arrays.stream(stepsRaw.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .map(Integer::parseInt)
+                .toList();
     }
 
     private String require(Properties props, String key) {
@@ -68,26 +80,92 @@ public class SimulationConfig {
 
     // ── Getters ────────────────────────────────────────────────────────────────
 
-    public String getDbUrl()      { return dbUrl; }
-    public String getDbUser()     { return dbUser; }
-    public String getDbPassword() { return dbPassword; }
+    public String getDbUrl() {
+        return dbUrl;
+    }
 
-    public List<String> getQueries()    { return queries; }
-    public int getSamples()             { return samples; }
-    public int getMaxRetries()          { return maxRetries; }
-    public int getTimeoutSeconds()      { return timeoutSeconds; }
+    public String getDbUser() {
+        return dbUser;
+    }
 
-    public int  getPoolMinSize()              { return poolMinSize; }
-    public int  getPoolMaxSize()              { return poolMaxSize; }
-    public long getPoolScaleUpThresholdMs()   { return poolScaleUpThresholdMs; }
-    public long getPoolScaleDownThresholdMs() { return poolScaleDownThresholdMs; }
-    public long getPoolAcquireTimeoutMs()     { return poolAcquireTimeoutMs; }
+    public String getDbPassword() {
+        return dbPassword;
+    }
+
+    public List<String> getQueries() {
+        return queries;
+    }
+
+    public int getSamples() {
+        return samples;
+    }
+
+    public int getMaxRetries() {
+        return maxRetries;
+    }
+
+    public int getTimeoutSeconds() {
+        return timeoutSeconds;
+    }
+
+    public int getPoolMinSize() {
+        return poolMinSize;
+    }
+
+    public int getPoolMaxSize() {
+        return poolMaxSize;
+    }
+
+    public long getPoolScaleUpThresholdMs() {
+        return poolScaleUpThresholdMs;
+    }
+
+    public long getPoolScaleDownThresholdMs() {
+        return poolScaleDownThresholdMs;
+    }
+
+    public long getPoolAcquireTimeoutMs() {
+        return poolAcquireTimeoutMs;
+    }
+
+    public boolean isIterative() {
+        return iterative;
+    }
+
+    public List<Integer> getIterativeSteps() {
+        return iterativeSteps;
+    }
+
+    /**
+     * Devuelve una copia de esta config con un número de muestras diferente.
+     * Útil para el modo iterativo: withSamples(100), withSamples(200), etc.
+     */
+    public SimulationConfig withSamples(int n) {
+        return new SimulationConfig(this, n);
+    }
+
+    // Constructor privado para clonación con diferente N
+    private SimulationConfig(SimulationConfig base, int newSamples) {
+        this.dbUrl = base.dbUrl;
+        this.dbUser = base.dbUser;
+        this.dbPassword = base.dbPassword;
+        this.queries = base.queries;
+        this.samples = newSamples;
+        this.maxRetries = base.maxRetries;
+        this.timeoutSeconds = base.timeoutSeconds;
+        this.poolMinSize = base.poolMinSize;
+        this.poolMaxSize = base.poolMaxSize;
+        this.poolScaleUpThresholdMs = base.poolScaleUpThresholdMs;
+        this.poolScaleDownThresholdMs = base.poolScaleDownThresholdMs;
+        this.poolAcquireTimeoutMs = base.poolAcquireTimeoutMs;
+        this.iterative = base.iterative;
+        this.iterativeSteps = base.iterativeSteps;
+    }
 
     @Override
     public String toString() {
         return String.format(
-            "[Config] BD=%s | Muestras=%d | Reintentos=%d | Timeout=%ds | Pool=%d-%d",
-            dbUrl, samples, maxRetries, timeoutSeconds, poolMinSize, poolMaxSize
-        );
+                "[Config] BD=%s | Muestras=%d | Reintentos=%d | Timeout=%ds | Pool=%d-%d",
+                dbUrl, samples, maxRetries, timeoutSeconds, poolMinSize, poolMaxSize);
     }
 }

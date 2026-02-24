@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.text.*?>
+<?import javafx.geometry.*?>
+
+<BorderPane xmlns="http://javafx.com/javafx/21"
+            xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="com.simulator.gui.SimulationController"
+            style="-fx-background-color: #1a1a2e; -fx-font-family: 'Consolas', monospace;">
+
+    <!-- ══ TOP: Título ═════════════════════════════════════════════════════ -->
+    <top>
+        <VBox style="-fx-background-color: #16213e; -fx-padding: 16 24 16 24;">
+            <Label text="🐘 Simulador de Pool de Conexiones"
+                   style="-fx-text-fill: #e2e8f0; -fx-font-size: 20px; -fx-font-weight: bold;"/>
+            <Label text="PostgreSQL + JDBC | RAW vs POOLED"
+                   style="-fx-text-fill: #64748b; -fx-font-size: 12px;"/>
+        </VBox>
+    </top>
+
+    <!-- ══ LEFT: Controles ════════════════════════════════════════════════ -->
+    <left>
+        <VBox spacing="16" style="-fx-background-color: #16213e; -fx-padding: 20 16 20 16; -fx-min-width: 220px;">
+
+            <!-- Modo Iterativo -->
+            <VBox spacing="6">
+                <Label text="Modo Iterativo" style="-fx-text-fill: #94a3b8; -fx-font-size: 11px; -fx-font-weight: bold;"/>
+                <CheckBox fx:id="chkIterativo" text="Activar"
+                          style="-fx-text-fill: #e2e8f0;"/>
+                <Label text="Pasos (ej: 50,100,200):" style="-fx-text-fill: #94a3b8; -fx-font-size: 11px;"/>
+                <TextField fx:id="txtPasos" promptText="50,100,200"
+                           style="-fx-background-color: #0f3460; -fx-text-fill: #e2e8f0; -fx-border-color: #334155; -fx-border-radius: 4; -fx-background-radius: 4;"/>
+            </VBox>
+
+            <Separator style="-fx-background-color: #334155;"/>
+
+            <!-- Estado -->
+            <VBox spacing="4">
+                <Label text="Estado" style="-fx-text-fill: #94a3b8; -fx-font-size: 11px; -fx-font-weight: bold;"/>
+                <Label fx:id="lblEstado" text="Listo"
+                       style="-fx-text-fill: #22d3ee; -fx-font-size: 13px;"/>
+            </VBox>
+
+            <!-- Barra de progreso -->
+            <ProgressBar fx:id="barProgreso" progress="0"
+                         maxWidth="Infinity"
+                         style="-fx-accent: #06b6d4;"/>
+
+            <Separator style="-fx-background-color: #334155;"/>
+
+            <!-- Botón Iniciar -->
+            <Button fx:id="btnIniciar" text="▶  Iniciar Simulación"
+                    maxWidth="Infinity"
+                    onAction="#onIniciar"
+                    style="-fx-background-color: #0ea5e9; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 13px; -fx-padding: 10 16; -fx-background-radius: 6; -fx-cursor: hand;"/>
+        </VBox>
+    </left>
+
+    <!-- ══ CENTER: Log en vivo ════════════════════════════════════════════ -->
+    <center>
+        <VBox spacing="8" style="-fx-padding: 16;">
+            <Label text="Log en vivo" style="-fx-text-fill: #94a3b8; -fx-font-size: 11px; -fx-font-weight: bold;"/>
+            <TextArea fx:id="logArea"
+                      editable="false"
+                      wrapText="true"
+                      VBox.vgrow="ALWAYS"
+                      style="-fx-control-inner-background: #0f172a; -fx-text-fill: #a3e635; -fx-font-family: 'Consolas', monospace; -fx-font-size: 11px; -fx-border-color: #334155; -fx-border-radius: 6; -fx-background-radius: 6;"/>
+        </VBox>
+    </center>
+
+    <!-- ══ BOTTOM: Tabla comparativa ══════════════════════════════════════ -->
+    <bottom>
+        <VBox spacing="6" style="-fx-padding: 0 16 16 16;">
+            <Label text="Comparativa Final"
+                   style="-fx-text-fill: #94a3b8; -fx-font-size: 11px; -fx-font-weight: bold;"/>
+            <TableView fx:id="tablaResult"
+                       prefHeight="170"
+                       style="-fx-background-color: #0f172a; -fx-border-color: #334155;">
+                <columns>
+                    <TableColumn fx:id="colMetrica" text="Métrica"  prefWidth="180"
+                                 style="-fx-text-fill: #e2e8f0;"/>
+                    <TableColumn fx:id="colRaw"     text="RAW"      prefWidth="200"/>
+                    <TableColumn fx:id="colPooled"  text="POOLED"   prefWidth="220"/>
+                </columns>
+                <placeholder>
+                    <Label text="Los resultados aparecerán aquí al terminar la simulación."
+                           style="-fx-text-fill: #475569;"/>
+                </placeholder>
+            </TableView>
+        </VBox>
+    </bottom>
+
+</BorderPane>
