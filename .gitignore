@@ -1,0 +1,22 @@
+# Maven
+target/
+*.class
+*.jar
+*.war
+
+# Logs generados por el simulador
+logs/
+
+src/main/resources/config.properties
+
+# IDEs
+.idea/
+*.iml
+.vscode/
+.classpath
+.project
+.settings/
+
+# Windows
+Thumbs.db
+desktop.ini
