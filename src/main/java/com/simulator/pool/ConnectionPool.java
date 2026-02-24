@@ -6,6 +6,7 @@ import com.simulator.logging.SimulationLogger;
 import java.sql.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * PARTE 5 — Pool de Conexiones propio
@@ -23,6 +24,7 @@ public class ConnectionPool {
     private final SimulationLogger logger;
     private final BlockingDeque<Connection> pool;
     private final AtomicInteger totalConexiones; // activas (en uso + disponibles)
+    private final AtomicLong ultimoTiempoEsperaMs;
     private volatile boolean cerrado = false;
 
     public ConnectionPool(SimulationConfig config, SimulationLogger logger) throws SQLException {
@@ -30,6 +32,7 @@ public class ConnectionPool {
         this.logger = logger;
         this.pool = new LinkedBlockingDeque<>();
         this.totalConexiones = new AtomicInteger(0);
+        this.ultimoTiempoEsperaMs = new AtomicLong(Long.MAX_VALUE);
         inicializar();
     }
 
@@ -60,6 +63,7 @@ public class ConnectionPool {
         // Intentar tomar una conexión disponible
         Connection conn = pool.poll(config.getPoolAcquireTimeoutMs(), TimeUnit.MILLISECONDS);
         long tiempoEspera = System.currentTimeMillis() - inicio;
+        ultimoTiempoEsperaMs.set(tiempoEspera);
 
         // Si no había disponible → scale-up
         if (conn == null || !esValida(conn)) {
@@ -103,12 +107,15 @@ public class ConnectionPool {
             return;
         }
 
-        // Scale-down: si hay más conexiones libres que el mínimo, cerrar esta
+        // Scale-down: si la espera reciente fue baja y hay más conexiones de las necesarias,
+        // cerrar esta conexión para reducir el pool.
         if (totalConexiones.get() > config.getPoolMinSize()
-                && pool.size() >= config.getPoolMinSize()) {
+            && pool.size() >= config.getPoolMinSize()
+            && ultimoTiempoEsperaMs.get() <= config.getPoolScaleDownThresholdMs()) {
             cerrarConexion(conn);
             totalConexiones.decrementAndGet();
-            logger.logInfo("Pool scale-down: " + totalConexiones.get() + " conexiones totales.");
+            logger.logInfo("Pool scale-down (espera=" + ultimoTiempoEsperaMs.get() + "ms): "
+                + totalConexiones.get() + " conexiones totales.");
             return;
         }
 

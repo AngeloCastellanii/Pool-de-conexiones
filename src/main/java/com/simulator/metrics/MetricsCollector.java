@@ -2,6 +2,9 @@ package com.simulator.metrics;
 
 import com.simulator.model.SimulationReport;
 
+import java.util.Set;
+import java.util.TreeSet;
+
 /**
  * PARTE 7 — Recolector de Métricas
  *
@@ -55,6 +58,27 @@ public class MetricsCollector {
 
         sb.append(SEP).append("\n");
 
+        // Distribución de queries ejecutadas
+        sb.append("Distribución de queries (muestras ejecutadas)\n");
+        sb.append(SEP2).append("\n");
+        sb.append(String.format("%-28s %-14s %-14s%n", "Query", "RAW", "POOLED"));
+        sb.append(SEP2).append("\n");
+
+        Set<String> todas = new TreeSet<>();
+        todas.addAll(raw.getConteoPorQuery().keySet());
+        todas.addAll(pooled.getConteoPorQuery().keySet());
+
+        for (String query : todas) {
+            long rawCount = raw.getConteoPorQuery().getOrDefault(query, 0L);
+            long pooledCount = pooled.getConteoPorQuery().getOrDefault(query, 0L);
+            sb.append(String.format("%-28s %-14s %-14s%n",
+                resumirQuery(query),
+                rawCount,
+                pooledCount));
+        }
+
+        sb.append(SEP).append("\n");
+
         // Conclusión
         int puntosRaw = calcularPuntos(raw, pooled);
         int puntosPooled = calcularPuntos(pooled, raw);
@@ -103,5 +127,14 @@ public class MetricsCollector {
 
     private static String f2(double v) {
         return String.format("%.2f", v);
+    }
+
+    private static String resumirQuery(String query) {
+        if (query == null || query.isBlank()) {
+            return "(vacía)";
+        }
+        String limpia = query.replaceAll("\\s+", " ").trim();
+        int max = 26;
+        return limpia.length() <= max ? limpia : limpia.substring(0, max) + "...";
     }
 }

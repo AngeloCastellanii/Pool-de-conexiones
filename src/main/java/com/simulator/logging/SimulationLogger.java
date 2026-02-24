@@ -49,10 +49,13 @@ public class SimulationLogger implements AutoCloseable {
     public synchronized void logSample(String tipo, SampleResult result) {
         String hora   = result.getTimestamp().format(TIME_FMT);
         String estado = result.isExitosa() ? "EXITOSA" : "FALLIDA";
+        String query  = resumirQuery(result.getQueryEjecutada());
         String linea  = String.format("[%s] [%-6s] [ID-%03d] [%s] Tiempo: %dms | Reintentos: %d%s",
                 hora, tipo, result.getId(), estado,
                 result.getTiempoMs(), result.getReintentos(),
                 result.isExitosa() ? "" : " | Error: " + result.getError());
+
+        linea += " | Query: " + query;
 
         writeLine(linea);
     }
@@ -93,6 +96,15 @@ public class SimulationLogger implements AutoCloseable {
         System.out.println(linea);
         writer.println(linea);
         writer.flush();
+    }
+
+    private String resumirQuery(String query) {
+        if (query == null || query.isBlank()) {
+            return "(vacía)";
+        }
+        String limpia = query.replaceAll("\\s+", " ").trim();
+        int max = 80;
+        return limpia.length() <= max ? limpia : limpia.substring(0, max) + "...";
     }
 
     @Override

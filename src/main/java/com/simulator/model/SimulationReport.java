@@ -1,6 +1,9 @@
 package com.simulator.model;
 
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
+import java.util.stream.Collectors;
 
 /**
  * Agrega todos los resultados de una simulación y calcula métricas globales.
@@ -43,5 +46,12 @@ public class SimulationReport {
                          .mapToInt(SampleResult::getReintentos)
                          .average()
                          .orElse(0);
+    }
+
+    public Map<String, Long> getConteoPorQuery() {
+        return resultados.stream()
+                .collect(Collectors.groupingBy(SampleResult::getQueryEjecutada,
+                        TreeMap::new,
+                        Collectors.counting()));
     }
 }
