@@ -9,6 +9,7 @@ import java.sql.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BooleanSupplier;
 
 /**
  * PARTE 4 — Simulación RAW
@@ -28,6 +29,10 @@ public class RawSimulation {
     }
 
     public SimulationReport run() throws InterruptedException {
+        return run(() -> false);
+    }
+
+    public SimulationReport run(BooleanSupplier stopRequested) throws InterruptedException {
         int n = config.getSamples();
         List<SampleResult> results = Collections.synchronizedList(new ArrayList<>());
         CountDownLatch startLatch = new CountDownLatch(1); // pistola de salida
@@ -56,8 +61,12 @@ public class RawSimulation {
 
             executor.submit(() -> {
                 try {
+                    if (stopRequested.getAsBoolean()) {
+                        cancelled.set(true);
+                        throw new InterruptedException("Cancelación solicitada");
+                    }
                     startLatch.await(); // esperar pistola de salida
-                    SampleResult result = ejecutarMuestra(sampleId, query, cancelled);
+                    SampleResult result = ejecutarMuestra(sampleId, query, cancelled, stopRequested);
                     results.add(result);
                     logger.logSample("RAW", result);
                 } catch (InterruptedException e) {
@@ -73,11 +82,24 @@ public class RawSimulation {
         }
 
         startLatch.countDown(); // ¡todos arrancan ya!
-        doneLatch.await(config.getTimeoutSeconds() + 5L, TimeUnit.SECONDS);
+        boolean completed;
+        try {
+            completed = doneLatch.await(config.getTimeoutSeconds() + 5L, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            cancelled.set(true);
+            executor.shutdownNow();
+            throw e;
+        } finally {
+            watchdog.shutdownNow();
+            executor.shutdownNow();
+        }
+
+        if (!completed) {
+            cancelled.set(true);
+            logger.logError("RAW no terminó dentro del tiempo de espera.");
+        }
 
         long totalMs = System.currentTimeMillis() - startTime;
-        watchdog.shutdownNow();
-        executor.shutdownNow();
 
         logger.logInfo("RAW finalizada. Tiempo total: " + totalMs + "ms");
         return new SimulationReport("RAW", new ArrayList<>(results), totalMs);
@@ -85,12 +107,12 @@ public class RawSimulation {
 
     // ── Lógica de 1 muestra con reintentos ────────────────────────────────────
 
-    private SampleResult ejecutarMuestra(int id, String query, AtomicBoolean cancelled) {
+    private SampleResult ejecutarMuestra(int id, String query, AtomicBoolean cancelled, BooleanSupplier stopRequested) {
         long inicio = System.currentTimeMillis();
         int reintentos = 0;
 
         while (reintentos <= config.getMaxRetries()) {
-            if (cancelled.get()) {
+            if (cancelled.get() || stopRequested.getAsBoolean() || Thread.currentThread().isInterrupted()) {
                 return new SampleResult(id, false,
                         System.currentTimeMillis() - inicio,
                         reintentos, query, "Cancelado por freno manual");

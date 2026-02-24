@@ -12,12 +12,11 @@ import javafx.application.Platform;
 import javafx.concurrent.Task;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
-import javafx.scene.paint.Color;
-import javafx.scene.text.Font;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.List;
+import java.util.concurrent.CancellationException;
 
 /**
  * Controlador JavaFX de la ventana principal.
@@ -38,6 +37,8 @@ public class SimulationController {
     @FXML
     private Button btnIniciar;
     @FXML
+    private Button btnDetener;
+    @FXML
     private CheckBox chkIterativo;
     @FXML
     private TextField txtPasos;
@@ -53,6 +54,7 @@ public class SimulationController {
     private TableColumn<MetricaFila, String> colPooled;
 
     private SimulationConfig config;
+    private Task<Void> tareaActual;
 
     @FXML
     public void initialize() {
@@ -75,11 +77,17 @@ public class SimulationController {
 
         barProgreso.setProgress(0);
         lblEstado.setText("Listo");
+        btnDetener.setDisable(true);
     }
 
     @FXML
     private void onIniciar() {
+        if (tareaActual != null && tareaActual.isRunning()) {
+            return;
+        }
+
         btnIniciar.setDisable(true);
+        btnDetener.setDisable(false);
         logArea.clear();
         tablaResult.getItems().clear();
         barProgreso.setProgress(-1); // modo indeterminado
@@ -97,7 +105,12 @@ public class SimulationController {
                     if (modoIterativo) {
                         appendLog("🔁 Modo ITERATIVO activado — pasos: " + config.getIterativeSteps());
                         IterativeRunner runner = new IterativeRunner(config, logger);
-                        List<IterativeRunner.StepResult> pasos = runner.run();
+                        List<IterativeRunner.StepResult> pasos = runner.run(this::isCancelled);
+
+                        if (isCancelled()) {
+                            throw new CancellationException("Simulación cancelada por el usuario");
+                        }
+
                         appendLog("✅ Iterativo completado — " + pasos.size() + " pasos procesados.");
                         Platform.runLater(() -> {
                             barProgreso.setProgress(1.0);
@@ -108,7 +121,11 @@ public class SimulationController {
                         // RAW
                         appendLog("⚙️  Iniciando simulación RAW...");
                         RawSimulation raw = new RawSimulation(config, logger);
-                        SimulationReport rawReport = raw.run();
+                        SimulationReport rawReport = raw.run(this::isCancelled);
+
+                        if (isCancelled()) {
+                            throw new CancellationException("Simulación cancelada por el usuario");
+                        }
 
                         appendLog(String.format("✅ RAW completada — %d/%d exitosas | Tiempo: %dms",
                                 rawReport.getExitosas(), rawReport.getTotalMuestras(),
@@ -117,10 +134,18 @@ public class SimulationController {
                         Platform.runLater(() -> barProgreso.setProgress(0.5));
                         Thread.sleep(2000);
 
+                        if (isCancelled()) {
+                            throw new CancellationException("Simulación cancelada por el usuario");
+                        }
+
                         // POOLED
                         appendLog("⚙️  Iniciando simulación POOLED...");
                         PooledSimulation pooled = new PooledSimulation(config, logger);
-                        SimulationReport pooledReport = pooled.run();
+                        SimulationReport pooledReport = pooled.run(this::isCancelled);
+
+                        if (isCancelled()) {
+                            throw new CancellationException("Simulación cancelada por el usuario");
+                        }
 
                         appendLog(String.format("✅ POOLED completada — %d/%d exitosas | Tiempo: %dms",
                                 pooledReport.getExitosas(), pooledReport.getTotalMuestras(),
@@ -136,6 +161,19 @@ public class SimulationController {
                         MetricsCollector.imprimirComparativa(rawReport, pooledReport, logger);
                     }
 
+                } catch (CancellationException e) {
+                    appendLog("🛑 Simulación detenida manualmente.");
+                    Platform.runLater(() -> {
+                        barProgreso.setProgress(0);
+                        lblEstado.setText("🛑 Detenida");
+                    });
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    appendLog("🛑 Simulación detenida manualmente.");
+                    Platform.runLater(() -> {
+                        barProgreso.setProgress(0);
+                        lblEstado.setText("🛑 Detenida");
+                    });
                 } catch (Exception e) {
                     StringWriter sw = new StringWriter();
                     e.printStackTrace(new PrintWriter(sw));
@@ -146,15 +184,36 @@ public class SimulationController {
             }
         };
 
-        tarea.setOnSucceeded(e -> btnIniciar.setDisable(false));
+        tareaActual = tarea;
+
+        tarea.setOnSucceeded(e -> {
+            btnIniciar.setDisable(false);
+            btnDetener.setDisable(true);
+        });
+        tarea.setOnCancelled(e -> {
+            btnIniciar.setDisable(false);
+            btnDetener.setDisable(true);
+            barProgreso.setProgress(0);
+            lblEstado.setText("🛑 Detenida");
+        });
         tarea.setOnFailed(e -> {
             btnIniciar.setDisable(false);
+            btnDetener.setDisable(true);
             lblEstado.setText("❌ Falló inesperadamente");
         });
 
         Thread hilo = new Thread(tarea);
         hilo.setDaemon(true);
         hilo.start();
+    }
+
+    @FXML
+    private void onDetener() {
+        if (tareaActual != null && tareaActual.isRunning()) {
+            appendLog("🛑 Freno manual solicitado. Deteniendo simulación...");
+            lblEstado.setText("Deteniendo...");
+            tareaActual.cancel(true);
+        }
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

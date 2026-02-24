@@ -55,6 +55,11 @@
                     maxWidth="Infinity"
                     onAction="#onIniciar"
                     style="-fx-background-color: #0ea5e9; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 13px; -fx-padding: 10 16; -fx-background-radius: 6; -fx-cursor: hand;"/>
+
+                <Button fx:id="btnDetener" text="■  Detener Simulación"
+                    maxWidth="Infinity"
+                    onAction="#onDetener"
+                    style="-fx-background-color: #dc2626; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 13px; -fx-padding: 10 16; -fx-background-radius: 6; -fx-cursor: hand;"/>
         </VBox>
     </left>
 

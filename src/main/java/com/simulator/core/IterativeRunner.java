@@ -6,6 +6,7 @@ import com.simulator.model.SimulationReport;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.BooleanSupplier;
 
 /**
  * EXTRA OPCIONAL — Modo Iterativo
@@ -29,6 +30,10 @@ public class IterativeRunner {
      * Ejecuta todos los pasos iterativos y devuelve la tabla de resultados.
      */
     public List<StepResult> run() throws Exception {
+        return run(() -> false);
+    }
+
+    public List<StepResult> run(BooleanSupplier stopRequested) throws Exception {
 
         List<Integer> steps = baseConfig.getIterativeSteps();
 
@@ -37,24 +42,32 @@ public class IterativeRunner {
 
         logger.logSection("MODO ITERATIVO — " + steps.size() + " PASOS: " + steps);
 
-        for (int n : steps) {
+        for (int i = 0; i < steps.size(); i++) {
+            if (stopRequested.getAsBoolean()) {
+                throw new InterruptedException("Cancelación solicitada");
+            }
+
+            int n = steps.get(i);
             SimulationConfig stepConfig = baseConfig.withSamples(n);
 
             logger.logInfo("━━━ Iniciando paso con N=" + n + " hilos ━━━");
 
             // RAW
             RawSimulation raw = new RawSimulation(stepConfig, logger);
-            SimulationReport rawReport = raw.run();
+            SimulationReport rawReport = raw.run(stopRequested);
             logger.logInfo(String.format("  [RAW   N=%-3d] %d/%d exitosas | Tiempo: %dms",
                     n, rawReport.getExitosas(), rawReport.getTotalMuestras(),
                     rawReport.getTiempoTotalMs()));
 
             // Pausa entre RAW y POOLED
             Thread.sleep(1500);
+            if (stopRequested.getAsBoolean()) {
+                throw new InterruptedException("Cancelación solicitada");
+            }
 
             // POOLED
             PooledSimulation pooled = new PooledSimulation(stepConfig, logger);
-            SimulationReport pooledReport = pooled.run();
+            SimulationReport pooledReport = pooled.run(stopRequested);
             logger.logInfo(String.format("  [POOLED N=%-3d] %d/%d exitosas | Tiempo: %dms",
                     n, pooledReport.getExitosas(), pooledReport.getTotalMuestras(),
                     pooledReport.getTiempoTotalMs()));
@@ -62,7 +75,7 @@ public class IterativeRunner {
             resultados.add(new StepResult(n, rawReport, pooledReport));
 
             // Pausa entre pasos
-            if (steps.indexOf(n) < steps.size() - 1) {
+            if (i < steps.size() - 1) {
                 logger.logInfo("  Pausa de 2 segundos antes del siguiente paso...");
                 Thread.sleep(2000);
             }

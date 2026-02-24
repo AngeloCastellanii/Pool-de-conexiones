@@ -10,6 +10,7 @@ import java.sql.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BooleanSupplier;
 
 /**
  * PARTE 6 — Simulación POOLED
@@ -29,6 +30,10 @@ public class PooledSimulation {
     }
 
     public SimulationReport run() throws Exception {
+        return run(() -> false);
+    }
+
+    public SimulationReport run(BooleanSupplier stopRequested) throws Exception {
         int n = config.getSamples();
         List<SampleResult> results = Collections.synchronizedList(new ArrayList<>());
         CountDownLatch startLatch = new CountDownLatch(1);
@@ -62,8 +67,12 @@ public class PooledSimulation {
 
             executor.submit(() -> {
                 try {
+                    if (stopRequested.getAsBoolean()) {
+                        cancelled.set(true);
+                        throw new InterruptedException("Cancelación solicitada");
+                    }
                     startLatch.await(); // esperar pistola de salida
-                    SampleResult result = ejecutarMuestra(sampleId, query, pool, cancelled);
+                    SampleResult result = ejecutarMuestra(sampleId, query, pool, cancelled, stopRequested);
                     results.add(result);
                     logger.logSample("POOLED", result);
                 } catch (InterruptedException e) {
@@ -79,13 +88,25 @@ public class PooledSimulation {
         }
 
         startLatch.countDown(); // ¡todos arrancan ya!
-        doneLatch.await(config.getTimeoutSeconds() + 5L, TimeUnit.SECONDS);
+        boolean completed;
+        try {
+            completed = doneLatch.await(config.getTimeoutSeconds() + 5L, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            cancelled.set(true);
+            executor.shutdownNow();
+            throw e;
+        } finally {
+            watchdog.shutdownNow();
+            executor.shutdownNow();
+            pool.shutdown();
+        }
+
+        if (!completed) {
+            cancelled.set(true);
+            logger.logError("POOLED no terminó dentro del tiempo de espera.");
+        }
 
         long totalMs = System.currentTimeMillis() - startTime;
-
-        watchdog.shutdownNow();
-        executor.shutdownNow();
-        pool.shutdown();
 
         logger.logInfo("POOLED finalizada. Tiempo total: " + totalMs + "ms");
         return new SimulationReport("POOLED", new ArrayList<>(results), totalMs);
@@ -94,12 +115,12 @@ public class PooledSimulation {
     // ── Lógica de 1 muestra con reintentos usando el pool ─────────────────────
 
     private SampleResult ejecutarMuestra(int id, String query,
-            ConnectionPool pool, AtomicBoolean cancelled) {
+            ConnectionPool pool, AtomicBoolean cancelled, BooleanSupplier stopRequested) {
         long inicio = System.currentTimeMillis();
         int reintentos = 0;
 
         while (reintentos <= config.getMaxRetries()) {
-            if (cancelled.get()) {
+            if (cancelled.get() || stopRequested.getAsBoolean() || Thread.currentThread().isInterrupted()) {
                 return new SampleResult(id, false,
                         System.currentTimeMillis() - inicio,
                         reintentos, query, "Cancelado por freno manual");
