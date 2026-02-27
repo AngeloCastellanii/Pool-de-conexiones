@@ -12,9 +12,11 @@ import javafx.application.Platform;
 import javafx.concurrent.Task;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
+import javafx.scene.paint.Color;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CancellationException;
 
@@ -42,6 +44,8 @@ public class SimulationController {
     private CheckBox chkIterativo;
     @FXML
     private TextField txtPasos;
+    @FXML
+    private Label lblPoolInfo;
 
     // Tabla comparativa
     @FXML
@@ -75,6 +79,16 @@ public class SimulationController {
         colRaw.setCellValueFactory(c -> new javafx.beans.property.SimpleStringProperty(c.getValue().raw));
         colPooled.setCellValueFactory(c -> new javafx.beans.property.SimpleStringProperty(c.getValue().pooled));
 
+        colMetrica.setCellFactory(column -> createReadableCell());
+        colRaw.setCellFactory(column -> createReadableCell());
+        colPooled.setCellFactory(column -> createReadableCell());
+
+        if (lblPoolInfo != null && config != null) {
+            lblPoolInfo.setText(String.format(
+                "Nota: los pasos iterativos cambian hilos/muestras, no el pool. Límite actual: %d-%d conexiones.",
+                config.getPoolMinSize(), config.getPoolMaxSize()));
+        }
+
         barProgreso.setProgress(0);
         lblEstado.setText("Listo");
         btnDetener.setDisable(true);
@@ -86,6 +100,21 @@ public class SimulationController {
             return;
         }
 
+        boolean modoIterativo = chkIterativo.isSelected();
+        SimulationConfig configEjecucion = config;
+        List<Integer> pasosIterativos = null;
+
+        if (modoIterativo) {
+            try {
+                pasosIterativos = parseIterativeSteps(txtPasos.getText());
+                configEjecucion = config.withIterativeSteps(pasosIterativos);
+            } catch (IllegalArgumentException e) {
+                lblEstado.setText("❌ Pasos inválidos");
+                log("❌ " + e.getMessage());
+                return;
+            }
+        }
+
         btnIniciar.setDisable(true);
         btnDetener.setDisable(false);
         logArea.clear();
@@ -93,7 +122,8 @@ public class SimulationController {
         barProgreso.setProgress(-1); // modo indeterminado
         lblEstado.setText("Simulando...");
 
-        boolean modoIterativo = chkIterativo.isSelected();
+        final SimulationConfig cfgFinal = configEjecucion;
+        final List<Integer> pasosFinal = pasosIterativos;
 
         Task<Void> tarea = new Task<>() {
             @Override
@@ -103,8 +133,8 @@ public class SimulationController {
                     appendLog("📋 Logger iniciado → " + logger.getLogFilePath());
 
                     if (modoIterativo) {
-                        appendLog("🔁 Modo ITERATIVO activado — pasos: " + config.getIterativeSteps());
-                        IterativeRunner runner = new IterativeRunner(config, logger);
+                        appendLog("🔁 Modo ITERATIVO activado — pasos: " + pasosFinal);
+                        IterativeRunner runner = new IterativeRunner(cfgFinal, logger);
                         List<IterativeRunner.StepResult> pasos = runner.run(this::isCancelled);
 
                         if (isCancelled()) {
@@ -120,7 +150,7 @@ public class SimulationController {
                     } else {
                         // RAW
                         appendLog("⚙️  Iniciando simulación RAW...");
-                        RawSimulation raw = new RawSimulation(config, logger);
+                        RawSimulation raw = new RawSimulation(cfgFinal, logger);
                         SimulationReport rawReport = raw.run(this::isCancelled);
 
                         if (isCancelled()) {
@@ -140,7 +170,7 @@ public class SimulationController {
 
                         // POOLED
                         appendLog("⚙️  Iniciando simulación POOLED...");
-                        PooledSimulation pooled = new PooledSimulation(config, logger);
+                        PooledSimulation pooled = new PooledSimulation(cfgFinal, logger);
                         SimulationReport pooledReport = pooled.run(this::isCancelled);
 
                         if (isCancelled()) {
@@ -224,6 +254,54 @@ public class SimulationController {
 
     private void log(String msg) {
         logArea.appendText(msg + "\n");
+    }
+
+    private TableCell<MetricaFila, String> createReadableCell() {
+        return new TableCell<>() {
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(null);
+                    setStyle("");
+                } else {
+                    setText(item);
+                    setTextFill(Color.web("#0f172a"));
+                    setStyle("-fx-font-size: 13px; -fx-font-weight: bold;");
+                }
+            }
+        };
+    }
+
+    private List<Integer> parseIterativeSteps(String raw) {
+        if (raw == null || raw.isBlank()) {
+            throw new IllegalArgumentException("Debes indicar pasos iterativos, por ejemplo: 100,500,1000");
+        }
+
+        List<Integer> pasos = new ArrayList<>();
+        String[] partes = raw.split(",");
+        for (String parte : partes) {
+            String limpio = parte.trim();
+            if (limpio.isEmpty()) {
+                throw new IllegalArgumentException("Formato inválido en pasos iterativos. Usa enteros separados por coma.");
+            }
+            int valor;
+            try {
+                valor = Integer.parseInt(limpio);
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException("Paso inválido: '" + limpio + "'. Usa solo números enteros positivos.");
+            }
+            if (valor <= 0) {
+                throw new IllegalArgumentException("Cada paso debe ser mayor que 0.");
+            }
+            pasos.add(valor);
+        }
+
+        if (pasos.isEmpty()) {
+            throw new IllegalArgumentException("Debes indicar al menos un paso iterativo.");
+        }
+
+        return pasos;
     }
 
     private void rellenarTablaIterativa(List<IterativeRunner.StepResult> pasos) {

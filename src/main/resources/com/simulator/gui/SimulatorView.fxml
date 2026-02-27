@@ -32,6 +32,10 @@
                 <Label text="Pasos (ej: 50,100,200):" style="-fx-text-fill: #94a3b8; -fx-font-size: 11px;"/>
                 <TextField fx:id="txtPasos" promptText="50,100,200"
                            style="-fx-background-color: #0f3460; -fx-text-fill: #e2e8f0; -fx-border-color: #334155; -fx-border-radius: 4; -fx-background-radius: 4;"/>
+                  <Label fx:id="lblPoolInfo"
+                      wrapText="true"
+                      text="Nota: los pasos iterativos cambian hilos/muestras, no el tamaño máximo del pool."
+                      style="-fx-text-fill: #cbd5e1; -fx-font-size: 10px;"/>
             </VBox>
 
             <Separator style="-fx-background-color: #334155;"/>
@@ -82,10 +86,10 @@
                    style="-fx-text-fill: #94a3b8; -fx-font-size: 11px; -fx-font-weight: bold;"/>
             <TableView fx:id="tablaResult"
                        prefHeight="170"
-                       style="-fx-background-color: #0f172a; -fx-border-color: #334155;">
+                       style="-fx-background-color: #0f172a; -fx-control-inner-background: #f8fafc; -fx-border-color: #334155; -fx-table-cell-border-color: #cbd5e1; -fx-font-size: 13px; -fx-text-background-color: #0f172a;">
                 <columns>
                     <TableColumn fx:id="colMetrica" text="Métrica"  prefWidth="180"
-                                 style="-fx-text-fill: #e2e8f0;"/>
+                                 style="-fx-text-fill: #0f172a; -fx-font-weight: bold;"/>
                     <TableColumn fx:id="colRaw"     text="RAW"      prefWidth="200"/>
                     <TableColumn fx:id="colPooled"  text="POOLED"   prefWidth="220"/>
                 </columns>

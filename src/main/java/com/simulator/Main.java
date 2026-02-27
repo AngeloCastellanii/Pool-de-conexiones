@@ -8,6 +8,8 @@ import com.simulator.logging.SimulationLogger;
 import com.simulator.metrics.MetricsCollector;
 import com.simulator.model.SimulationReport;
 
+import java.util.concurrent.atomic.AtomicBoolean;
+
 /**
  * PARTE 8 — Punto de entrada del Simulador de Pool de Conexiones
  *
@@ -35,6 +37,23 @@ public class Main {
         System.out.println(config);
 
         try (SimulationLogger logger = new SimulationLogger()) {
+            AtomicBoolean stopRequested = new AtomicBoolean(false);
+
+            Thread stopper = new Thread(() -> {
+                try {
+                    System.out.println("Presiona ENTER en cualquier momento para detener la simulación...");
+                    int ch;
+                    while ((ch = System.in.read()) != -1) {
+                        if (ch == '\n' || ch == '\r') {
+                            stopRequested.set(true);
+                            break;
+                        }
+                    }
+                } catch (Exception ignored) {
+                }
+            }, "manual-stop-listener");
+            stopper.setDaemon(true);
+            stopper.start();
 
             logger.logInfo("Configuracion cargada: " + config);
 
@@ -42,7 +61,7 @@ public class Main {
             if (config.isIterative()) {
                 logger.logInfo("Modo ITERATIVO activado. Pasos: " + config.getIterativeSteps());
                 IterativeRunner runner = new IterativeRunner(config, logger);
-                runner.run();
+                runner.run(stopRequested::get);
                 System.out.println("Archivo de log generado en: " + logger.getLogFilePath());
                 return;
             }
@@ -53,13 +72,18 @@ public class Main {
             SimulationReport rawReport;
             try {
                 RawSimulation raw = new RawSimulation(config, logger);
-                rawReport = raw.run();
+                rawReport = raw.run(stopRequested::get);
                 logger.logInfo(String.format(
                         "RAW completada: %d/%d exitosas (%.1f%%) | Tiempo: %dms",
                         rawReport.getExitosas(), rawReport.getTotalMuestras(),
                         rawReport.getPorcentajeExito(), rawReport.getTiempoTotalMs()));
             } catch (Exception e) {
                 logger.logError("Error en simulacion RAW: " + e.getMessage());
+                return;
+            }
+
+            if (stopRequested.get()) {
+                logger.logInfo("Simulación detenida manualmente por consola.");
                 return;
             }
 
@@ -74,13 +98,18 @@ public class Main {
             SimulationReport pooledReport;
             try {
                 PooledSimulation pooled = new PooledSimulation(config, logger);
-                pooledReport = pooled.run();
+                pooledReport = pooled.run(stopRequested::get);
                 logger.logInfo(String.format(
                         "POOLED completada: %d/%d exitosas (%.1f%%) | Tiempo: %dms",
                         pooledReport.getExitosas(), pooledReport.getTotalMuestras(),
                         pooledReport.getPorcentajeExito(), pooledReport.getTiempoTotalMs()));
             } catch (Exception e) {
                 logger.logError("Error en simulacion POOLED: " + e.getMessage());
+                return;
+            }
+
+            if (stopRequested.get()) {
+                logger.logInfo("Simulación detenida manualmente por consola.");
                 return;
             }
 

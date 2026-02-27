@@ -1,6 +1,7 @@
 package com.simulator.config;
 
 import java.io.InputStream;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Properties;
@@ -137,6 +138,13 @@ public class SimulationConfig {
     }
 
     /**
+     * Devuelve una copia de esta config con pasos iterativos personalizados.
+     */
+    public SimulationConfig withIterativeSteps(List<Integer> steps) {
+        return new SimulationConfig(this, this.samples, steps);
+    }
+
+    /**
      * Devuelve una copia de esta config con un número de muestras diferente.
      * Útil para el modo iterativo: withSamples(100), withSamples(200), etc.
      */
@@ -160,6 +168,23 @@ public class SimulationConfig {
         this.poolAcquireTimeoutMs = base.poolAcquireTimeoutMs;
         this.iterative = base.iterative;
         this.iterativeSteps = base.iterativeSteps;
+    }
+
+    private SimulationConfig(SimulationConfig base, int newSamples, List<Integer> newIterativeSteps) {
+        this.dbUrl = base.dbUrl;
+        this.dbUser = base.dbUser;
+        this.dbPassword = base.dbPassword;
+        this.queries = base.queries;
+        this.samples = newSamples;
+        this.maxRetries = base.maxRetries;
+        this.timeoutSeconds = base.timeoutSeconds;
+        this.poolMinSize = base.poolMinSize;
+        this.poolMaxSize = base.poolMaxSize;
+        this.poolScaleUpThresholdMs = base.poolScaleUpThresholdMs;
+        this.poolScaleDownThresholdMs = base.poolScaleDownThresholdMs;
+        this.poolAcquireTimeoutMs = base.poolAcquireTimeoutMs;
+        this.iterative = base.iterative;
+        this.iterativeSteps = List.copyOf(new ArrayList<>(newIterativeSteps));
     }
 
     @Override
