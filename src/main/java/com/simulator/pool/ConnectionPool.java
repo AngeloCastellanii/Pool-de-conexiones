@@ -20,7 +20,16 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public class ConnectionPool {
 
-    private final SimulationConfig config;
+    private final String dbUrl;
+    private final String dbUser;
+    private final String dbPassword;
+
+    private final int poolMinSize;
+    private final int poolMaxSize;
+    private final long poolScaleUpThresholdMs;
+    private final long poolScaleDownThresholdMs;
+    private final long poolAcquireTimeoutMs;
+
     private final SimulationLogger logger;
     private final BlockingDeque<Connection> pool;
     private final AtomicInteger totalConexiones; // activas (en uso + disponibles)
@@ -28,7 +37,36 @@ public class ConnectionPool {
     private volatile boolean cerrado = false;
 
     public ConnectionPool(SimulationConfig config, SimulationLogger logger) throws SQLException {
-        this.config = config;
+        this(
+                config.getDbUrl(),
+                config.getDbUser(),
+                config.getDbPassword(),
+                config.getPoolMinSize(),
+                config.getPoolMaxSize(),
+                config.getPoolScaleUpThresholdMs(),
+                config.getPoolScaleDownThresholdMs(),
+                config.getPoolAcquireTimeoutMs(),
+                logger);
+    }
+
+    public ConnectionPool(
+            String dbUrl,
+            String dbUser,
+            String dbPassword,
+            int poolMinSize,
+            int poolMaxSize,
+            long poolScaleUpThresholdMs,
+            long poolScaleDownThresholdMs,
+            long poolAcquireTimeoutMs,
+            SimulationLogger logger) throws SQLException {
+        this.dbUrl = dbUrl;
+        this.dbUser = dbUser;
+        this.dbPassword = dbPassword;
+        this.poolMinSize = poolMinSize;
+        this.poolMaxSize = poolMaxSize;
+        this.poolScaleUpThresholdMs = poolScaleUpThresholdMs;
+        this.poolScaleDownThresholdMs = poolScaleDownThresholdMs;
+        this.poolAcquireTimeoutMs = poolAcquireTimeoutMs;
         this.logger = logger;
         this.pool = new LinkedBlockingDeque<>();
         this.totalConexiones = new AtomicInteger(0);
@@ -39,12 +77,12 @@ public class ConnectionPool {
     // ── Inicialización ────────────────────────────────────────────────────────
 
     private void inicializar() throws SQLException {
-        logger.logInfo("Inicializando pool con " + config.getPoolMinSize() + " conexiones...");
-        for (int i = 0; i < config.getPoolMinSize(); i++) {
+        logInfo("Inicializando pool con " + poolMinSize + " conexiones...");
+        for (int i = 0; i < poolMinSize; i++) {
             pool.offer(crearConexion());
             totalConexiones.incrementAndGet();
         }
-        logger.logInfo("Pool listo — " + totalConexiones.get() + " conexiones disponibles.");
+        logInfo("Pool listo — " + totalConexiones.get() + " conexiones disponibles.");
     }
 
     // ── Adquirir conexión ─────────────────────────────────────────────────────
@@ -61,31 +99,31 @@ public class ConnectionPool {
         long inicio = System.currentTimeMillis();
 
         // Intentar tomar una conexión disponible
-        Connection conn = pool.poll(config.getPoolAcquireTimeoutMs(), TimeUnit.MILLISECONDS);
+        Connection conn = pool.poll(poolAcquireTimeoutMs, TimeUnit.MILLISECONDS);
         long tiempoEspera = System.currentTimeMillis() - inicio;
         ultimoTiempoEsperaMs.set(tiempoEspera);
 
         // Si no había disponible → scale-up
         if (conn == null || !esValida(conn)) {
-            if (totalConexiones.get() < config.getPoolMaxSize()) {
+            if (totalConexiones.get() < poolMaxSize) {
                 conn = crearConexion();
                 totalConexiones.incrementAndGet();
-                logger.logInfo("Pool scale-up (sin disponibles): "
+                logInfo("Pool scale-up (sin disponibles): "
                         + totalConexiones.get() + " conexiones totales.");
             } else {
                 throw new SQLException(
                         "Pool agotado: no hay conexiones disponibles (max="
-                                + config.getPoolMaxSize() + ")");
+                                + poolMaxSize + ")");
             }
         }
 
         // Si la espera superó el umbral → scale-up preventivo
-        if (tiempoEspera > config.getPoolScaleUpThresholdMs()
-                && totalConexiones.get() < config.getPoolMaxSize()) {
+        if (tiempoEspera > poolScaleUpThresholdMs
+                && totalConexiones.get() < poolMaxSize) {
             try {
                 pool.offer(crearConexion());
                 totalConexiones.incrementAndGet();
-                logger.logInfo("Pool scale-up (umbral espera=" + tiempoEspera + "ms): "
+                logInfo("Pool scale-up (umbral espera=" + tiempoEspera + "ms): "
                         + totalConexiones.get() + " conexiones totales.");
             } catch (SQLException e) {
                 // scale-up best-effort, no crítico
@@ -109,12 +147,12 @@ public class ConnectionPool {
 
         // Scale-down: si la espera reciente fue baja y hay más conexiones de las necesarias,
         // cerrar esta conexión para reducir el pool.
-        if (totalConexiones.get() > config.getPoolMinSize()
-            && pool.size() >= config.getPoolMinSize()
-            && ultimoTiempoEsperaMs.get() <= config.getPoolScaleDownThresholdMs()) {
+        if (totalConexiones.get() > poolMinSize
+            && pool.size() >= poolMinSize
+            && ultimoTiempoEsperaMs.get() <= poolScaleDownThresholdMs) {
             cerrarConexion(conn);
             totalConexiones.decrementAndGet();
-            logger.logInfo("Pool scale-down (espera=" + ultimoTiempoEsperaMs.get() + "ms): "
+            logInfo("Pool scale-down (espera=" + ultimoTiempoEsperaMs.get() + "ms): "
                 + totalConexiones.get() + " conexiones totales.");
             return;
         }
@@ -130,7 +168,7 @@ public class ConnectionPool {
                 pool.offer(crearConexion());
                 totalConexiones.incrementAndGet();
             } catch (SQLException e) {
-                logger.logError("No se pudo reemplazar conexión inválida: " + e.getMessage());
+                logError("No se pudo reemplazar conexión inválida: " + e.getMessage());
             }
         }
     }
@@ -145,7 +183,7 @@ public class ConnectionPool {
             cerrarConexion(conn);
             cerradas++;
         }
-        logger.logInfo("Pool cerrado — " + cerradas + " conexiones cerradas.");
+        logInfo("Pool cerrado — " + cerradas + " conexiones cerradas.");
         totalConexiones.set(0);
     }
 
@@ -167,7 +205,19 @@ public class ConnectionPool {
 
     private Connection crearConexion() throws SQLException {
         return DriverManager.getConnection(
-                config.getDbUrl(), config.getDbUser(), config.getDbPassword());
+                dbUrl, dbUser, dbPassword);
+    }
+
+    private void logInfo(String message) {
+        if (logger != null) {
+            logger.logInfo(message);
+        }
+    }
+
+    private void logError(String message) {
+        if (logger != null) {
+            logger.logError(message);
+        }
     }
 
     private boolean esValida(Connection conn) {
